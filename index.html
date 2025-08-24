@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no, viewport-fit=cover" />
+  <title>QR Item Tracker (Offline)</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <meta name="theme-color" content="#0a7d32" />
+  <link rel="icon" type="image/png" href="icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <link rel="stylesheet" href="styles.css" />
+  <!-- Bootstrap Icons -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+  <style>
+    body { font-family: system-ui, sans-serif; background: #f4f7f9; margin: 0; color: #222; }
+    .app-bar { background: #0a7d32; color: #fff; padding: 1rem; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 6px rgba(0,0,0,.2); }
+    h1, h2, h3 { margin: .3em 0; }
+    main { padding: 1rem; }
+    .card { background: #fff; border-radius: 12px; padding: 1rem; box-shadow: 0 2px 6px rgba(0,0,0,.1); margin-bottom: 1rem; }
+    .row.gap { display: flex; gap: .5rem; }
+    .btn { padding: .6rem 1rem; border-radius: 8px; border: none; cursor: pointer; font-weight: 600; transition: background 0.2s ease; display: flex; align-items: center; gap: .4rem; }
+    .btn.outline { border: 1px solid #0a7d32; background: #fff; color: #0a7d32; }
+    .btn.secondary { background: #fff; color: #0a7d32; border: 1px solid #ccc; }
+    .btn.danger { background: #e74c3c; color: #fff; }
+    .btn.primary { background: #0a7d32; color: #fff; }
+    .btn:hover { opacity: 0.9; }
+    video { width: 100%; border-radius: 12px; background: #000; }
+    .overlay { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.6); color: #fff; padding: .5rem 1rem; border-radius: 6px; font-size: .9rem; }
+    dialog { border: none; border-radius: 12px; padding: 1rem 1.5rem; width: 90%; max-width: 500px; box-shadow: 0 8px 24px rgba(0,0,0,.2); }
+    dialog h3 { margin-top: 0; }
+    dialog menu { display: flex; justify-content: flex-end; gap: .5rem; margin-top: 1rem; }
+    #recordsContainer { max-height: 250px; overflow-y: auto; margin-top: .5rem; }
+    #searchRecords { width: 100%; padding: .5rem; margin: .5rem 0; border-radius: 8px; border: 1px solid #ccc; }
+    .list { list-style: none; padding: 0; margin: 0; }
+    .list li { padding: .6rem; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
+    .list .info { flex-grow: 1; }
+    .toast { position: fixed; bottom: 1rem; left: 50%; transform: translateX(-50%); background: #0a7d32; color: #fff; padding: .7rem 1rem; border-radius: 8px; opacity: 0; transition: opacity .3s ease-in-out; }
+    .toast.show { opacity: 1; }
+  </style>
+</head>
+<body>
+  <header class="app-bar">
+    <h1>JoelPowerBank Tracker</h1>
+    <div class="row gap">
+      <button id="btnInstall" class="btn secondary" hidden><i class="bi bi-download"></i> Install</button>
+      <button id="btnRecords" class="btn outline"><i class="bi bi-card-list"></i> Records</button>
+    </div>
+  </header>
+
+  <main>
+    <!-- Camera / Scanner -->
+    <section class="card">
+      <h2><i class="bi bi-upc-scan"></i> Scanner</h2>
+      <div class="video-wrap" style="position:relative;">
+        <video id="video" autoplay muted playsinline></video>
+        <canvas id="frame" class="hidden"></canvas>
+        <div id="overlay" class="overlay">Point camera at a QR code</div>
+      </div>
+      <div class="row gap" style="margin-top:.5rem;">
+        <button id="btnStart" class="btn primary"><i class="bi bi-camera-video"></i> Start Camera</button>
+        <button id="btnStop" class="btn outline" disabled><i class="bi bi-stop-circle"></i> Stop</button>
+        <button id="btnTorch" class="btn outline" disabled><i class="bi bi-lightbulb"></i> Toggle Torch</button>
+      </div>
+      <p id="supportInfo" class="muted"></p>
+    </section>
+  </main>
+
+  <!-- Records dialog -->
+  <dialog id="dlgRecords">
+    <h3><i class="bi bi-people"></i> Borrower Records</h3>
+    <input type="text" id="searchRecords" placeholder="🔍 Search by code or name..." />
+    <div id="recordsContainer">
+      <div id="emptyState" class="muted">No borrowed items yet.</div>
+      <ul id="recordsList" class="list"></ul>
+    </div>
+    <menu>
+      <button id="btnCloseRecords" class="btn outline"><i class="bi bi-x-circle"></i> Close</button>
+    </menu>
+  </dialog>
+
+  <!-- Return dialog -->
+  <dialog id="dlgReturn">
+    <form method="dialog" id="returnForm">
+      <h3><i class="bi bi-arrow-return-left"></i> Return Item?</h3>
+      <p class="muted">QR Code:</p>
+      <p id="returnCode" class="code-chip"></p>
+      <p class="muted">Borrower:</p>
+      <p id="returnBorrower" class="borrower-chip"></p>
+      <menu>
+        <button value="cancel" class="btn outline"><i class="bi bi-x-lg"></i> Cancel</button>
+        <button id="btnConfirmReturn" class="btn danger"><i class="bi bi-check-lg"></i> Confirm Return</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <!-- Toast -->
+  <div id="toast" class="toast"></div>
+
+  <!-- QR + App Script -->
+  <script src="https://cdn.jsdelivr.net/npm/jsqr/dist/jsQR.js"></script>
+  <script>
+    const video = document.getElementById("video");
+    const canvas = document.getElementById("frame");
+    const ctx = canvas.getContext("2d");
+    const btnStart = document.getElementById("btnStart");
+    const btnStop = document.getElementById("btnStop");
+    const btnTorch = document.getElementById("btnTorch");
+    const overlay = document.getElementById("overlay");
+
+    const btnRecords = document.getElementById("btnRecords");
+    const dlgRecords = document.getElementById("dlgRecords");
+    const btnCloseRecords = document.getElementById("btnCloseRecords");
+    const searchRecords = document.getElementById("searchRecords");
+
+    const dlgReturn = document.getElementById("dlgReturn");
+    const returnCode = document.getElementById("returnCode");
+    const returnBorrower = document.getElementById("returnBorrower");
+    const btnConfirmReturn = document.getElementById("btnConfirmReturn");
+
+    let stream = null;
+    let scanning = false;
+    let borrowedItems = [];
+    let currentTrack = null;
+    let torchOn = false;
+    let itemToReturn = null; // store selected item
+
+    // Open records popup
+    btnRecords.addEventListener("click", () => {
+      dlgRecords.showModal();
+      loadRecords();
+    });
+    btnCloseRecords.addEventListener("click", () => dlgRecords.close());
+
+    // Live search filter
+    searchRecords.addEventListener("input", () => {
+      loadRecords(searchRecords.value.trim().toLowerCase());
+    });
+
+    // Start Camera
+    btnStart.addEventListener("click", async () => {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: "environment" } }
+        });
+        video.srcObject = stream;
+        await video.play();
+
+        btnStart.disabled = true;
+        btnStop.disabled = false;
+        scanning = true;
+
+        currentTrack = stream.getVideoTracks()[0];
+
+        const capabilities = currentTrack.getCapabilities();
+        btnTorch.disabled = !capabilities.torch;
+
+        scanFrame();
+      } catch (err) {
+        overlay.textContent = "⚠️ Please allow camera access.";
+        console.error("Camera error:", err);
+      }
+    });
+
+    // Stop Camera
+    btnStop.addEventListener("click", stopCamera);
+    function stopCamera() {
+      if (stream) stream.getTracks().forEach(track => track.stop());
+      btnStart.disabled = false;
+      btnStop.disabled = true;
+      btnTorch.disabled = true;
+      scanning = false;
+      overlay.textContent = "Point camera at a QR code";
+    }
+
+    // Torch Toggle
+    btnTorch.addEventListener("click", async () => {
+      if (!currentTrack) return;
+      try {
+        torchOn = !torchOn;
+        await currentTrack.applyConstraints({ advanced: [{ torch: torchOn }] });
+        btnTorch.textContent = torchOn ? "Torch ON" : "Torch OFF";
+      } catch (err) {
+        console.error("Torch error:", err);
+        showToast("Torch not supported on this device");
+      }
+    });
+
+    // Frame scanning loop
+    function scanFrame() {
+      if (!scanning) return;
+      if (video.readyState === video.HAVE_ENOUGH_DATA) {
+        canvas.height = video.videoHeight;
+        canvas.width = video.videoWidth;
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+        const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: "dontInvert" });
+
+        if (code) {
+          overlay.textContent = "✅ QR Detected: " + code.data;
+          scanning = false;
+          stopCamera();
+
+          const found = borrowedItems.find(item => item.code === code.data);
+
+          if (found) {
+            itemToReturn = found;
+            returnCode.textContent = found.code;
+            returnBorrower.textContent = found.borrower;
+            dlgReturn.showModal();
+          } else {
+            const borrowerName = prompt("Enter borrower name for " + code.data);
+            if (borrowerName) {
+              borrowedItems.push({ code: code.data, borrower: borrowerName });
+              loadRecords();
+              showToast(`Item ${code.data} borrowed by ${borrowerName} 📌`);
+            }
+          }
+        }
+      }
+      requestAnimationFrame(scanFrame);
+    }
+
+    // Confirm Return
+    btnConfirmReturn.addEventListener("click", () => {
+      if (itemToReturn) {
+        borrowedItems = borrowedItems.filter(i => i.code !== itemToReturn.code);
+        loadRecords();
+        showToast(`Item ${itemToReturn.code} returned ✅`);
+        itemToReturn = null;
+      }
+      dlgReturn.close();
+    });
+
+    // Load Records
+    function loadRecords(filter = "") {
+      const recordsList = document.getElementById("recordsList");
+      const emptyState = document.getElementById("emptyState");
+      recordsList.innerHTML = "";
+
+      const filtered = borrowedItems.filter(r =>
+        r.code.toLowerCase().includes(filter) || r.borrower.toLowerCase().includes(filter)
+      );
+
+      if (filtered.length === 0) {
+        emptyState.style.display = "block";
+      } else {
+        emptyState.style.display = "none";
+        filtered.forEach(r => {
+          const li = document.createElement("li");
+
+          const info = document.createElement("div");
+          info.className = "info";
+          info.textContent = `${r.code} - ${r.borrower}`;
+
+          const btnReturn = document.createElement("button");
+          btnReturn.className = "btn danger";
+          btnReturn.textContent = "Return";
+          btnReturn.addEventListener("click", () => {
+            itemToReturn = r;
+            returnCode.textContent = r.code;
+            returnBorrower.textContent = r.borrower;
+            dlgReturn.showModal();
+          });
+
+          li.appendChild(info);
+          li.appendChild(btnReturn);
+          recordsList.appendChild(li);
+        });
+      }
+    }
+
+    // Toast Message
+    function showToast(msg) {
+      const toast = document.getElementById("toast");
+      toast.textContent = msg;
+      toast.classList.add("show");
+      setTimeout(() => toast.classList.remove("show"), 3000);
+    }
+
+    // Init
+    loadRecords();
+  </script>
+  <script>
+    let deferredPrompt;
+    const btnInstall = document.getElementById("btnInstall");
+
+    // Catch install prompt
+    window.addEventListener("beforeinstallprompt", (e) => {
+      e.preventDefault();
+      deferredPrompt = e;
+      btnInstall.hidden = false;
+    });
+
+    // Click install button
+    btnInstall.addEventListener("click", async () => {
+      if (!deferredPrompt) return;
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === "accepted") {
+        console.log("User accepted install");
+      } else {
+        console.log("User dismissed install");
+      }
+      deferredPrompt = null;
+      btnInstall.hidden = true;
+    });
+  </script>
+<script>
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("sw.js")
+      .then(() => console.log("✅ Service Worker registered"))
+      .catch(err => console.error("SW fail:", err));
+  }
+</script>
+</body>
+</html>
