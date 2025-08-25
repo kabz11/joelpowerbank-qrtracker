@@ -1,13 +1,13 @@
 const CACHE = 'qr-tracker-v1';
 const ASSETS = [
-  './',
-  './index.html',
-  './styles.css',
-  './app.js',
-  './db.js',
-  './manifest.webmanifest',
-  './icons/icon-192.png',
-  './icons/icon-512.png'
+  '',
+  'index.html',
+  'styles.css',
+  'app.js',
+  'db.js',
+  'manifest.webmanifest',
+  'icons/icon-192.png',
+  'icons/icon-512.png'
 ];
 
 self.addEventListener('install', (e)=>{
@@ -37,6 +37,6 @@ self.addEventListener('fetch', (e)=>{
           caches.open(CACHE).then(c=>c.put(req, resClone));
         }
         return res;
-      }).catch(()=> caches.match('./index.html')))
+      }).catch(()=> caches.match('index.html')))
   );
 });
