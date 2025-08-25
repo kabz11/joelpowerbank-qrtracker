@@ -1,9 +1,9 @@
 /* global navigator, window, document */
-import { db } from './db.js';
+import { db } from '/db.js';
 
 // PWA: Service Worker registration
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./service-worker.js').catch(console.error);
+  navigator.serviceWorker.register('/service-worker.js').catch(console.error);
 }
 
 // Install prompt handling
@@ -268,4 +268,5 @@ document.addEventListener('visibilitychange', ()=>{
 });
 
 renderList();
+
 
