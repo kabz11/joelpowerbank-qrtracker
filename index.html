@@ -173,17 +173,17 @@
     }
 
     // Torch Toggle
-    btnTorch.addEventListener("click", async () => {
-      if (!currentTrack) return;
-      try {
-        torchOn = !torchOn;
-        await currentTrack.applyConstraints({ advanced: [{ torch: torchOn }] });
-        btnTorch.textContent = torchOn ? "Torch ON" : "Torch OFF";
-      } catch (err) {
-        console.error("Torch error:", err);
-        showToast("Torch not supported on this device");
-      }
-    });
+    //btnTorch.addEventListener("click", async () => {
+      //if (!currentTrack) return;
+      //try {
+       // torchOn = !torchOn;
+       // await currentTrack.applyConstraints({ advanced: [{ torch: torchOn }] });
+      //  btnTorch.textContent = torchOn ? "Torch ON" : "Torch OFF";
+      //} catch (err) {
+        //console.error("Torch error:", err);
+       // showToast("Torch not supported on this device");
+      //}
+    //});
 
     // Frame scanning loop
     function scanFrame() {
@@ -315,6 +315,7 @@
 </script>
 </body>
 </html>
+
 
 
 
