@@ -122,7 +122,15 @@
     let borrowedItems = [];
     let currentTrack = null;
     let torchOn = false;
-    let itemToReturn = null; // store selected item
+    let itemToReturn = null;
+
+    // === Persistence helpers ===
+    function saveItems() {
+      localStorage.setItem("borrowedItems", JSON.stringify(borrowedItems));
+    }
+    function loadItems() {
+      borrowedItems = JSON.parse(localStorage.getItem("borrowedItems") || "[]");
+    }
 
     // Open records popup
     btnRecords.addEventListener("click", () => {
@@ -150,7 +158,6 @@
         scanning = true;
 
         currentTrack = stream.getVideoTracks()[0];
-
         const capabilities = currentTrack.getCapabilities();
         btnTorch.disabled = !capabilities.torch;
 
@@ -173,17 +180,17 @@
     }
 
     // Torch Toggle
-    //btnTorch.addEventListener("click", async () => {
-      //if (!currentTrack) return;
-      //try {
-       // torchOn = !torchOn;
-       // await currentTrack.applyConstraints({ advanced: [{ torch: torchOn }] });
-      //  btnTorch.textContent = torchOn ? "Torch ON" : "Torch OFF";
-      //} catch (err) {
-        //console.error("Torch error:", err);
-       // showToast("Torch not supported on this device");
-      //}
-    //});
+    btnTorch.addEventListener("click", async () => {
+      if (!currentTrack) return;
+      try {
+        torchOn = !torchOn;
+        await currentTrack.applyConstraints({ advanced: [{ torch: torchOn }] });
+        btnTorch.textContent = torchOn ? "Torch ON" : "Toggle Torch";
+      } catch (err) {
+        console.error("Torch error:", err);
+        showToast("Torch not supported on this device");
+      }
+    });
 
     // Frame scanning loop
     function scanFrame() {
@@ -212,6 +219,7 @@
             const borrowerName = prompt("Enter borrower name for " + code.data);
             if (borrowerName) {
               borrowedItems.push({ code: code.data, borrower: borrowerName });
+              saveItems();
               loadRecords();
               showToast(`Item ${code.data} borrowed by ${borrowerName} 📌`);
             }
@@ -225,6 +233,7 @@
     btnConfirmReturn.addEventListener("click", () => {
       if (itemToReturn) {
         borrowedItems = borrowedItems.filter(i => i.code !== itemToReturn.code);
+        saveItems();
         loadRecords();
         showToast(`Item ${itemToReturn.code} returned ✅`);
         itemToReturn = null;
@@ -279,44 +288,34 @@
     }
 
     // Init
+    loadItems();
     loadRecords();
   </script>
   <script>
     let deferredPrompt;
     const btnInstall = document.getElementById("btnInstall");
 
-    // Catch install prompt
     window.addEventListener("beforeinstallprompt", (e) => {
       e.preventDefault();
       deferredPrompt = e;
       btnInstall.hidden = false;
     });
 
-    // Click install button
     btnInstall.addEventListener("click", async () => {
       if (!deferredPrompt) return;
       deferredPrompt.prompt();
       const { outcome } = await deferredPrompt.userChoice;
-      if (outcome === "accepted") {
-        console.log("User accepted install");
-      } else {
-        console.log("User dismissed install");
-      }
+      console.log("User choice:", outcome);
       deferredPrompt = null;
       btnInstall.hidden = true;
     });
   </script>
-<script>
-  if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("service-worker.js")
-      .then(reg => console.log("✅ Service Worker registered:", reg.scope))
-      .catch(err => console.error("❌ Service Worker failed:", err));
-  }
-</script>
+  <script>
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("./service-worker.js")
+        .then(reg => console.log("✅ Service Worker registered:", reg.scope))
+        .catch(err => console.error("❌ Service Worker failed:", err));
+    }
+  </script>
 </body>
 </html>
-
-
-
-
-
