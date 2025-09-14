@@ -1,9 +1,10 @@
 /* global navigator, window, document */
-import { db } from 'db.js';
+import { db } from './db.js';   // ✅ fixed path
 
 // PWA: Service Worker registration
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('service-worker.js').catch(console.error);
+  navigator.serviceWorker.register('./service-worker.js')  // ✅ fixed path
+    .catch(console.error);
 }
 
 // Install prompt handling
@@ -12,19 +13,18 @@ const btnInstall = document.getElementById('btnInstall');
 window.addEventListener('beforeinstallprompt', (e) => {
   e.preventDefault();
   deferredPrompt = e;
-  btnInstall.hidden = false;
+  if (btnInstall) btnInstall.hidden = false;
 });
 btnInstall?.addEventListener('click', async () => {
   if (!deferredPrompt) return;
   deferredPrompt.prompt();
-  await deferredPrompt.userChoice.catch(()=>{});
+  await deferredPrompt.userChoice.catch(() => {});
   deferredPrompt = null;
   btnInstall.hidden = true;
 });
 
 // UI refs
 const video = document.getElementById('video');
-const canvas = document.getElementById('frame');
 const overlay = document.getElementById('overlay');
 const btnStart = document.getElementById('btnStart');
 const btnStop = document.getElementById('btnStop');
@@ -95,15 +95,14 @@ async function startCamera(){
       video: {
         facingMode: 'environment',
         width: { ideal: 1280 },
-        height: { ideal: 720 },
-        focusMode: 'continuous'
+        height: { ideal: 720 }
       },
       audio: false
     });
     video.srcObject = stream;
     await video.play();
 
-    // Try to enable torch track capability if present
+    // Torch support
     const [track] = stream.getVideoTracks();
     const caps = track.getCapabilities?.() || {};
     btnTorch.disabled = !caps.torch;
@@ -156,14 +155,13 @@ async function scanLoop(){
   }
 
   const now = performance.now();
-  if (now - lastTime < 120) { // ~8 fps
+  if (now - lastTime < 120) {
     window.requestAnimationFrame(scanLoop);
     return;
   }
   lastTime = now;
 
   if (detector){
-    // Use BarcodeDetector
     try{
       const barcodes = await detector.detect(video);
       if (barcodes?.length){
@@ -175,7 +173,6 @@ async function scanLoop(){
       }
     }catch(e){ /* ignore transient */ }
   } else {
-    // Graceful: no detector -> show message (camera preview only)
     overlay.textContent = 'Scanner not supported on this browser.';
   }
 
@@ -184,19 +181,16 @@ async function scanLoop(){
 
 // Business logic
 async function handleScan(code){
-  // prevent double-firing quickly
   if (currentScanned === code) return;
   currentScanned = code;
   setTimeout(()=>{ if (currentScanned === code) currentScanned = null; }, 1000);
 
   const existing = await db.get(code);
   if (!existing){
-    // New loan
     borrowCode.textContent = code;
     borrowerName.value = '';
     dlgBorrow.showModal();
   } else {
-    // Return flow
     returnCode.textContent = code;
     returnBorrower.textContent = existing.borrower;
     dlgReturn.showModal();
@@ -252,7 +246,6 @@ async function renderList(){
     `;
     li.append(left, right);
     li.addEventListener('click', async ()=>{
-      // Quick return on tap
       returnCode.textContent = item.code;
       returnBorrower.textContent = item.borrower;
       dlgReturn.showModal();
@@ -262,12 +255,8 @@ async function renderList(){
 }
 
 search.addEventListener('input', renderList);
-
 document.addEventListener('visibilitychange', ()=>{
   if (document.visibilityState === 'visible') renderList();
 });
 
 renderList();
-
-
-
