@@ -36,13 +36,25 @@
     .list .info { flex-grow: 1; }
     .toast { position: fixed; bottom: 1rem; left: 50%; transform: translateX(-50%); background: #0a7d32; color: #fff; padding: .7rem 1rem; border-radius: 8px; opacity: 0; transition: opacity .3s ease-in-out; }
     .toast.show { opacity: 1; }
+    .overlay {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 1.2rem;
+  font-weight: bold;
+  color: white;
+  text-shadow: 0 2px 4px rgba(0,0,0,0.7);
+  text-align: center;
+  pointer-events: none; /* so it doesn't block clicks */
+}
+
   </style>
 </head>
 <body>
   <header class="app-bar">
     <h1>JoelPowerBank Tracker</h1>
     <div class="row gap">
-     
       <button id="btnRecords" class="btn outline"><i class="bi bi-card-list"></i> Records</button>
     </div>
   </header>
@@ -319,6 +331,7 @@
   </script>
 </body>
 </html>
+
 
 
 
