@@ -42,34 +42,28 @@
   width: 100%;
 }
 
-.overlay {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  font-size: 1.2rem;
-  font-weight: bold;
-  color: white;
-  text-shadow: 0 2px 4px rgba(0,0,0,0.7);
-  text-align: center;
-  pointer-events: none; /* don’t block clicks */
-}
 
   /* Scanning red line */
   #scan-line {
-    position: absolute;
-    left: 0;
-    width: 100%;
-    height: 2px;
-    background: red;
-    animation: scanAnim 2s infinite alternate;
-    opacity: 0.8;
-  }
+  position: absolute;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background: red;
+  animation: scanAnim 2s infinite alternate;
+  opacity: 0.8;
+  display: none; /* 🔴 hidden initially */
+}
+
 
   @keyframes scanAnim {
     from { top: 0%; }
     to { top: 100%; }
   }
+#camera {
+  background: black; /* default background */
+}
+
   </style>
 </head>
 <body>
@@ -86,9 +80,9 @@
       <h2><i class="bi bi-upc-scan"></i> Scanner</h2>
       <div class="video-wrap" style="position:relative;">
         <video id="video" autoplay muted playsinline></video>
+	<div id="overlay"></div>
         <div id="scan-line"></div> <!-- red scanning line -->
         <canvas id="frame" class="hidden"></canvas>
-        <div id="overlay" class="overlay">Point camera at a QR code</div>
 
       </div>
       <div class="row gap" style="margin-top:.5rem;">
@@ -98,6 +92,38 @@
       </div>
       <p id="supportInfo" class="muted"></p>
     </section>
+<!-- Stats Cards -->
+<div class="container my-3">
+  <div class="row justify-content-center text-center" id="statsCard">
+    <div class="col-12 col-md-4 mb-3">
+      <div class="card shadow-sm h-100">
+        <div class="card-body">
+          <h5 class="card-title"><i class="bi bi-people"></i> Total Borrowers</h5>
+          <p class="card-text fs-4"><span id="totalBorrowers">0</span></p>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-md-4 mb-3">
+      <div class="card shadow-sm h-100">
+        <div class="card-body">
+          <h5 class="card-title"><i class="bi bi-calendar-day"></i> Daily Income</h5>
+          <p class="card-text fs-4">₱<span id="dailyIncome">0</span></p>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-md-4 mb-3">
+      <div class="card shadow-sm h-100">
+        <div class="card-body">
+          <h5 class="card-title"><i class="bi bi-calendar-month"></i> Monthly Income</h5>
+          <p class="card-text fs-4">₱<span id="monthlyIncome">0</span></p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
   </main>
 
   <!-- Records dialog -->
@@ -125,11 +151,13 @@
         <button value="cancel" class="btn outline"><i class="bi bi-x-lg"></i> Cancel</button>
         <button id="btnConfirmReturn" class="btn danger"><i class="bi bi-check-lg"></i> Confirm Return</button>
       </menu>
+
     </form>
   </dialog>
 
   <!-- Toast -->
   <div id="toast" class="toast"></div>
+
 
   <audio id="beepSound" src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg" preload="auto"></audio>
 
@@ -181,40 +209,56 @@
       loadRecords(searchRecords.value.trim().toLowerCase());
     });
 
-    // Start Camera
-    btnStart.addEventListener("click", async () => {
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: "environment" } }
-        });
-        video.srcObject = stream;
-        await video.play();
-
-        btnStart.disabled = true;
-        btnStop.disabled = false;
-        scanning = true;
-
-        currentTrack = stream.getVideoTracks()[0];
-        const capabilities = currentTrack.getCapabilities();
-        btnTorch.disabled = !capabilities.torch;
-
-        scanFrame();
-      } catch (err) {
-        overlay.textContent = "⚠️ Please allow camera access.";
-        console.error("Camera error:", err);
-      }
+// Start Camera
+btnStart.addEventListener("click", async () => {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: "environment" } }
     });
+    video.srcObject = stream;
+    await video.play();
+video.style.background = "transparent"; // remove black when camera starts
 
-    // Stop Camera
-    btnStop.addEventListener("click", stopCamera);
-    function stopCamera() {
-      if (stream) stream.getTracks().forEach(track => track.stop());
-      btnStart.disabled = false;
-      btnStop.disabled = true;
-      btnTorch.disabled = true;
-      scanning = false;
-      overlay.textContent = "Point camera at a QR code";
-    }
+
+    btnStart.disabled = true;
+    btnStop.disabled = false;
+    scanning = true;
+
+    // 🔴 Show red scan line
+    document.getElementById("scan-line").style.display = "block";
+
+    currentTrack = stream.getVideoTracks()[0];
+    const capabilities = currentTrack.getCapabilities();
+    btnTorch.disabled = !capabilities.torch;
+
+    scanFrame();
+  } catch (err) {
+    overlay.textContent = "⚠️ Please allow camera access.";
+    console.error("Camera error:", err);
+  }
+});
+
+// ✅ Stop Camera button listener
+btnStop.addEventListener("click", stopCamera);
+
+function stopCamera() {
+  if (stream) stream.getTracks().forEach(track => track.stop());
+  btnStart.disabled = false;
+  btnStop.disabled = true;
+  btnTorch.disabled = true;
+  scanning = false;
+
+  // Reset overlay text
+  overlay.textContent = "";
+
+  // 🔴 Hide scan line
+  document.getElementById("scan-line").style.display = "none";
+
+  // 🖤 Show black screen when camera is off
+  video.srcObject = null;
+  video.style.background = "black";
+}
+
 
     // Torch Toggle
     btnTorch.addEventListener("click", async () => {
@@ -231,48 +275,63 @@
 
     // Frame scanning loop
     function scanFrame() {
-      if (!scanning) return;
-      if (video.readyState === video.HAVE_ENOUGH_DATA) {
-        canvas.height = video.videoHeight;
-        canvas.width = video.videoWidth;
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  if (!scanning) return;
+  if (video.readyState === video.HAVE_ENOUGH_DATA) {
+    canvas.height = video.videoHeight;
+    canvas.width = video.videoWidth;
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
-        const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: "dontInvert" });
+    const code = jsQR(imageData.data, imageData.width, imageData.height, {
+      inversionAttempts: "dontInvert"
+    });
 
-        if (code) {
-          overlay.textContent = "✅ QR Detected: " + code.data;
-          scanning = false;
-          stopCamera();
+    if (code) {
+      overlay.textContent = "✅ QR Detected: " + code.data;
 
-          const found = borrowedItems.find(item => item.code === code.data);
+      // 🔊 Play detection sound
+      const beep = document.getElementById("beepSound");
+      beep.currentTime = 0; // reset to start
+      beep.play().catch(err => console.warn("Sound play failed:", err));
 
-          if (found) {
-            itemToReturn = found;
-            returnCode.textContent = found.code;
-            returnBorrower.textContent = found.borrower;
-            dlgReturn.showModal();
-          } else {
-            const borrowerName = prompt("Enter borrower name for " + code.data);
-            if (borrowerName) {
-              borrowedItems.push({ code: code.data, borrower: borrowerName });
-              saveItems();
-              loadRecords();
-              showToast(`Item ${code.data} borrowed by ${borrowerName} 📌`);
-            }
-          }
-        }
+      scanning = false;
+      stopCamera();
+
+      const found = borrowedItems.find(item => item.code === code.data);
+      if (found) {
+        itemToReturn = found;
+        returnCode.textContent = found.code;
+        returnBorrower.textContent = found.borrower;
+        dlgReturn.showModal();
+      } else {
+        const borrowerName = prompt("Enter borrower name for " + code.data);
+        if (borrowerName) {
+  borrowedItems.push({ 
+    code: code.data, 
+    borrower: borrowerName, 
+    date: new Date().toLocaleString(), // for display
+    timestamp: Date.now()              // ✅ for calculations
+  });
+    saveItems();
+  loadRecords();
+  updateStats(); // ✅
+  showToast(`Item ${code.data} borrowed by ${borrowerName} 📌`);
+}
+
+
       }
-      requestAnimationFrame(scanFrame);
     }
-
+  }
+  requestAnimationFrame(scanFrame);
+}
     // Confirm Return
     btnConfirmReturn.addEventListener("click", () => {
       if (itemToReturn) {
         borrowedItems = borrowedItems.filter(i => i.code !== itemToReturn.code);
-        saveItems();
-        loadRecords();
-        showToast(`Item ${itemToReturn.code} returned ✅`);
+          saveItems();
+  loadRecords();
+  updateStats(); // ✅
+  showToast(`Item ${itemToReturn.code} returned ✅`);
         itemToReturn = null;
       }
       dlgReturn.close();
@@ -293,28 +352,74 @@
       } else {
         emptyState.style.display = "none";
         filtered.forEach(r => {
-          const li = document.createElement("li");
+  const li = document.createElement("li");
 
-          const info = document.createElement("div");
-          info.className = "info";
-          info.textContent = `${r.code} - ${r.borrower}`;
+  const borrowedAt = r.timestamp || Date.now();
+  const hoursPassed = (Date.now() - borrowedAt) / (1000 * 60 * 60);
 
-          const btnReturn = document.createElement("button");
-          btnReturn.className = "btn danger";
-          btnReturn.textContent = "Return";
-          btnReturn.addEventListener("click", () => {
-            itemToReturn = r;
-            returnCode.textContent = r.code;
-            returnBorrower.textContent = r.borrower;
-            dlgReturn.showModal();
-          });
+  const isLate = hoursPassed > 24; // ✅ check if more than 24h
 
-          li.appendChild(info);
-          li.appendChild(btnReturn);
-          recordsList.appendChild(li);
-        });
+  const info = document.createElement("div");
+  info.className = "info";
+  info.innerHTML = `
+    <div>
+      ${r.code} - ${r.borrower} 
+      ${isLate ? '<span style="color:red; font-weight:bold;">⏰ Overdue</span>' : ''}
+    </div>
+    <small style="color: grey;">${r.date || ''}</small>
+  `;
+
+  const btnReturn = document.createElement("button");
+  btnReturn.className = "btn danger";
+  btnReturn.textContent = "Return";
+  btnReturn.addEventListener("click", () => {
+    itemToReturn = r;
+    returnCode.textContent = r.code;
+    returnBorrower.textContent = r.borrower;
+    dlgReturn.showModal();
+  });
+
+  li.appendChild(info);
+  li.appendChild(btnReturn);
+  recordsList.appendChild(li);
+});
+
       }
     }
+    // === Stats Calculation ===
+    function updateStats() {
+      const totalBorrowers = borrowedItems.length;
+      document.getElementById("totalBorrowers").textContent = totalBorrowers;
+
+      let dailyCount = 0;
+      let monthlyCount = 0;
+
+      const today = new Date();
+      const todayStr = today.toLocaleDateString();
+      const monthStr = today.getMonth();
+      const yearStr = today.getFullYear();
+
+      borrowedItems.forEach(r => {
+        const borrowedDate = new Date(r.timestamp || Date.now());
+
+        // Daily (same day, month, year)
+        if (borrowedDate.toLocaleDateString() === todayStr) {
+          dailyCount++;
+        }
+
+        // Monthly (same month & year)
+        if (
+          borrowedDate.getMonth() === monthStr &&
+          borrowedDate.getFullYear() === yearStr
+        ) {
+          monthlyCount++;
+        }
+      });
+
+      document.getElementById("dailyIncome").textContent = dailyCount * 20;
+      document.getElementById("monthlyIncome").textContent = monthlyCount * 20;
+    }
+
 
     // Toast Message
     function showToast(msg) {
@@ -326,7 +431,8 @@
 
     // Init
     loadItems();
-    loadRecords();
+loadRecords();
+updateStats(); // ✅
   </script>
   <script>
     let deferredPrompt;
@@ -354,38 +460,6 @@
         .catch(err => console.error("❌ Service Worker failed:", err));
     }
 
-    if (code) {
-  overlay.textContent = "✅ QR Detected: " + code.data;
-
-  // Play detection sound
-  document.getElementById("beepSound").play();
-
-  scanning = false;
-  stopCamera();
-  
-  const found = borrowedItems.find(item => item.code === code.data);
-  if (found) {
-    itemToReturn = found;
-    returnCode.textContent = found.code;
-    returnBorrower.textContent = found.borrower;
-    dlgReturn.showModal();
-  } else {
-    const borrowerName = prompt("Enter borrower name for " + code.data);
-    if (borrowerName) {
-      borrowedItems.push({ code: code.data, borrower: borrowerName });
-      saveItems();
-      loadRecords();
-      showToast(`Item ${code.data} borrowed by ${borrowerName} 📌`);
-    }
-  }
-}
-
   </script>
 </body>
 </html>
-
-
-
-
-
-
