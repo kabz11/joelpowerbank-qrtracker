@@ -48,7 +48,21 @@
   text-align: center;
   pointer-events: none; /* so it doesn't block clicks */
 }
+  /* Scanning red line */
+  #scan-line {
+    position: absolute;
+    left: 0;
+    width: 100%;
+    height: 2px;
+    background: red;
+    animation: scanAnim 2s infinite alternate;
+    opacity: 0.8;
+  }
 
+  @keyframes scanAnim {
+    from { top: 0%; }
+    to { top: 100%; }
+  }
   </style>
 </head>
 <body>
@@ -65,8 +79,10 @@
       <h2><i class="bi bi-upc-scan"></i> Scanner</h2>
       <div class="video-wrap" style="position:relative;">
         <video id="video" autoplay muted playsinline></video>
+        <div id="scan-line"></div> <!-- red scanning line -->
         <canvas id="frame" class="hidden"></canvas>
         <div id="overlay" class="overlay">Point camera at a QR code</div>
+
       </div>
       <div class="row gap" style="margin-top:.5rem;">
         <button id="btnStart" class="btn primary"><i class="bi bi-camera-video"></i> Start Camera</button>
@@ -107,6 +123,8 @@
 
   <!-- Toast -->
   <div id="toast" class="toast"></div>
+
+  <audio id="beepSound" src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg" preload="auto"></audio>
 
   <!-- QR + App Script -->
   <script src="https://cdn.jsdelivr.net/npm/jsqr/dist/jsQR.js"></script>
@@ -328,9 +346,37 @@
         .then(reg => console.log("✅ Service Worker registered:", reg.scope))
         .catch(err => console.error("❌ Service Worker failed:", err));
     }
+
+    if (code) {
+  overlay.textContent = "✅ QR Detected: " + code.data;
+
+  // Play detection sound
+  document.getElementById("beepSound").play();
+
+  scanning = false;
+  stopCamera();
+  
+  const found = borrowedItems.find(item => item.code === code.data);
+  if (found) {
+    itemToReturn = found;
+    returnCode.textContent = found.code;
+    returnBorrower.textContent = found.borrower;
+    dlgReturn.showModal();
+  } else {
+    const borrowerName = prompt("Enter borrower name for " + code.data);
+    if (borrowerName) {
+      borrowedItems.push({ code: code.data, borrower: borrowerName });
+      saveItems();
+      loadRecords();
+      showToast(`Item ${code.data} borrowed by ${borrowerName} 📌`);
+    }
+  }
+}
+
   </script>
 </body>
 </html>
+
 
 
 
