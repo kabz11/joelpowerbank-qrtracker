@@ -70,6 +70,7 @@
   <header class="app-bar">
     <h1>JoelPowerBank Tracker</h1>
     <div class="row gap">
+      <button id="btnInstall" class="btn outline" hidden><i class="bi bi-download"></i> Install</button>
       <button id="btnRecords" class="btn outline"><i class="bi bi-card-list"></i> Records</button>
     </div>
   </header>
@@ -163,295 +164,322 @@
 
   <!-- QR + App Script -->
   <script src="https://cdn.jsdelivr.net/npm/jsqr/dist/jsQR.js"></script>
-  <script>
-    const video = document.getElementById("video");
-    const canvas = document.getElementById("frame");
-    const ctx = canvas.getContext("2d");
-    const btnStart = document.getElementById("btnStart");
-    const btnStop = document.getElementById("btnStop");
-    const btnTorch = document.getElementById("btnTorch");
-    const overlay = document.getElementById("overlay");
+<script src="https://cdn.jsdelivr.net/npm/jsqr/dist/jsQR.js"></script>
+<script>
+  const video = document.getElementById("video");
+  const canvas = document.getElementById("frame");
+  const ctx = canvas.getContext("2d");
+  const btnStart = document.getElementById("btnStart");
+  const btnStop = document.getElementById("btnStop");
+  const btnTorch = document.getElementById("btnTorch");
+  const overlay = document.getElementById("overlay");
 
-    const btnRecords = document.getElementById("btnRecords");
-    const dlgRecords = document.getElementById("dlgRecords");
-    const btnCloseRecords = document.getElementById("btnCloseRecords");
-    const searchRecords = document.getElementById("searchRecords");
+  const btnRecords = document.getElementById("btnRecords");
+  const dlgRecords = document.getElementById("dlgRecords");
+  const btnCloseRecords = document.getElementById("btnCloseRecords");
+  const searchRecords = document.getElementById("searchRecords");
 
-    const dlgReturn = document.getElementById("dlgReturn");
-    const returnCode = document.getElementById("returnCode");
-    const returnBorrower = document.getElementById("returnBorrower");
-    const btnConfirmReturn = document.getElementById("btnConfirmReturn");
+  const dlgReturn = document.getElementById("dlgReturn");
+  const returnCode = document.getElementById("returnCode");
+  const returnBorrower = document.getElementById("returnBorrower");
+  const btnConfirmReturn = document.getElementById("btnConfirmReturn");
 
-    let stream = null;
-    let scanning = false;
-    let borrowedItems = [];
-    let currentTrack = null;
-    let torchOn = false;
-    let itemToReturn = null;
+  let stream = null;
+  let scanning = false;
+  let borrowedItems = [];
+  let currentTrack = null;
+  let torchOn = false;
+  let itemToReturn = null;
 
-    // === Persistence helpers ===
-    function saveItems() {
-      localStorage.setItem("borrowedItems", JSON.stringify(borrowedItems));
-    }
-    function loadItems() {
-      borrowedItems = JSON.parse(localStorage.getItem("borrowedItems") || "[]");
-    }
+  // === Persistence helpers ===
+  let borrowHistory = JSON.parse(localStorage.getItem("borrowHistory") || "[]");
 
-    // Open records popup
-    btnRecords.addEventListener("click", () => {
-      dlgRecords.showModal();
-      loadRecords();
-    });
-    btnCloseRecords.addEventListener("click", () => dlgRecords.close());
-
-    // Live search filter
-    searchRecords.addEventListener("input", () => {
-      loadRecords(searchRecords.value.trim().toLowerCase());
-    });
-
-// Start Camera
-btnStart.addEventListener("click", async () => {
-  try {
-    stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: "environment" } }
-    });
-    video.srcObject = stream;
-    await video.play();
-video.style.background = "transparent"; // remove black when camera starts
-
-
-    btnStart.disabled = true;
-    btnStop.disabled = false;
-    scanning = true;
-
-    // 🔴 Show red scan line
-    document.getElementById("scan-line").style.display = "block";
-
-    currentTrack = stream.getVideoTracks()[0];
-    const capabilities = currentTrack.getCapabilities();
-    btnTorch.disabled = !capabilities.torch;
-
-    scanFrame();
-  } catch (err) {
-    overlay.textContent = "⚠️ Please allow camera access.";
-    console.error("Camera error:", err);
+  function saveItems() {
+    localStorage.setItem("borrowedItems", JSON.stringify(borrowedItems));
   }
-});
-
-// ✅ Stop Camera button listener
-btnStop.addEventListener("click", stopCamera);
-
-function stopCamera() {
-  if (stream) stream.getTracks().forEach(track => track.stop());
-  btnStart.disabled = false;
-  btnStop.disabled = true;
-  btnTorch.disabled = true;
-  scanning = false;
-
-  // Reset overlay text
-  overlay.textContent = "";
-
-  // 🔴 Hide scan line
-  document.getElementById("scan-line").style.display = "none";
-
-  // 🖤 Show black screen when camera is off
-  video.srcObject = null;
-  video.style.background = "black";
-}
-
-
-    // Torch Toggle
-    btnTorch.addEventListener("click", async () => {
-      if (!currentTrack) return;
-      try {
-        torchOn = !torchOn;
-        await currentTrack.applyConstraints({ advanced: [{ torch: torchOn }] });
-        btnTorch.textContent = torchOn ? "Torch ON" : "Toggle Torch";
-      } catch (err) {
-        console.error("Torch error:", err);
-        showToast("Torch not supported on this device");
-      }
-    });
-
-    // Frame scanning loop
-    function scanFrame() {
-  if (!scanning) return;
-  if (video.readyState === video.HAVE_ENOUGH_DATA) {
-    canvas.height = video.videoHeight;
-    canvas.width = video.videoWidth;
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-
-    const code = jsQR(imageData.data, imageData.width, imageData.height, {
-      inversionAttempts: "dontInvert"
-    });
-
-    if (code) {
-      overlay.textContent = "✅ QR Detected: " + code.data;
-
-      // 🔊 Play detection sound
-      const beep = document.getElementById("beepSound");
-      beep.currentTime = 0; // reset to start
-      beep.play().catch(err => console.warn("Sound play failed:", err));
-
-      scanning = false;
-      stopCamera();
-
-      const found = borrowedItems.find(item => item.code === code.data);
-      if (found) {
-        itemToReturn = found;
-        returnCode.textContent = found.code;
-        returnBorrower.textContent = found.borrower;
-        dlgReturn.showModal();
-      } else {
-        const borrowerName = prompt("Enter borrower name for " + code.data);
-        if (borrowerName) {
-  borrowedItems.push({ 
-    code: code.data, 
-    borrower: borrowerName, 
-    date: new Date().toLocaleString(), // for display
-    timestamp: Date.now()              // ✅ for calculations
-  });
-    saveItems();
-  loadRecords();
-  updateStats(); // ✅
-  showToast(`Item ${code.data} borrowed by ${borrowerName} 📌`);
-}
-
-
-      }
-    }
+  function loadItems() {
+    borrowedItems = JSON.parse(localStorage.getItem("borrowedItems") || "[]");
   }
-  requestAnimationFrame(scanFrame);
-}
-    // Confirm Return
-    btnConfirmReturn.addEventListener("click", () => {
-      if (itemToReturn) {
-        borrowedItems = borrowedItems.filter(i => i.code !== itemToReturn.code);
-          saveItems();
-  loadRecords();
-  updateStats(); // ✅
-  showToast(`Item ${itemToReturn.code} returned ✅`);
-        itemToReturn = null;
-      }
-      dlgReturn.close();
-    });
+  function saveHistory() {
+    localStorage.setItem("borrowHistory", JSON.stringify(borrowHistory));
+  }
 
-    // Load Records
-    function loadRecords(filter = "") {
-      const recordsList = document.getElementById("recordsList");
-      const emptyState = document.getElementById("emptyState");
-      recordsList.innerHTML = "";
+  // ==========================
+  // CAMERA + SCANNING
+  // ==========================
+  btnStart.addEventListener("click", async () => {
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: "environment" } }
+      });
+      video.srcObject = stream;
+      await video.play();
+      video.style.background = "transparent"; 
 
-      const filtered = borrowedItems.filter(r =>
-        r.code.toLowerCase().includes(filter) || r.borrower.toLowerCase().includes(filter)
-      );
+      btnStart.disabled = true;
+      btnStop.disabled = false;
+      scanning = true;
 
-      if (filtered.length === 0) {
-        emptyState.style.display = "block";
-      } else {
-        emptyState.style.display = "none";
-        filtered.forEach(r => {
-  const li = document.createElement("li");
+      document.getElementById("scan-line").style.display = "block";
 
-  const borrowedAt = r.timestamp || Date.now();
-  const hoursPassed = (Date.now() - borrowedAt) / (1000 * 60 * 60);
+      currentTrack = stream.getVideoTracks()[0];
+      const capabilities = currentTrack.getCapabilities();
+      btnTorch.disabled = !capabilities.torch;
 
-  const isLate = hoursPassed > 24; // ✅ check if more than 24h
-
-  const info = document.createElement("div");
-  info.className = "info";
-  info.innerHTML = `
-    <div>
-      ${r.code} - ${r.borrower} 
-      ${isLate ? '<span style="color:red; font-weight:bold;">⏰ Overdue</span>' : ''}
-    </div>
-    <small style="color: grey;">${r.date || ''}</small>
-  `;
-
-  const btnReturn = document.createElement("button");
-  btnReturn.className = "btn danger";
-  btnReturn.textContent = "Return";
-  btnReturn.addEventListener("click", () => {
-    itemToReturn = r;
-    returnCode.textContent = r.code;
-    returnBorrower.textContent = r.borrower;
-    dlgReturn.showModal();
+      scanFrame();
+    } catch (err) {
+      overlay.textContent = "⚠️ Please allow camera access.";
+      console.error("Camera error:", err);
+    }
   });
 
-  li.appendChild(info);
-  li.appendChild(btnReturn);
-  recordsList.appendChild(li);
-});
+  btnStop.addEventListener("click", stopCamera);
 
-      }
+  function stopCamera() {
+    if (stream) stream.getTracks().forEach(track => track.stop());
+    btnStart.disabled = false;
+    btnStop.disabled = true;
+    btnTorch.disabled = true;
+    scanning = false;
+    overlay.textContent = "";
+    document.getElementById("scan-line").style.display = "none";
+    video.srcObject = null;
+    video.style.background = "black";
+  }
+
+  btnTorch.addEventListener("click", async () => {
+    if (!currentTrack) return;
+    try {
+      torchOn = !torchOn;
+      await currentTrack.applyConstraints({ advanced: [{ torch: torchOn }] });
+      btnTorch.textContent = torchOn ? "Torch ON" : "Toggle Torch";
+    } catch (err) {
+      console.error("Torch error:", err);
+      showToast("Torch not supported on this device");
     }
-    // === Stats Calculation ===
-    function updateStats() {
-      const totalBorrowers = borrowedItems.length;
-      document.getElementById("totalBorrowers").textContent = totalBorrowers;
+  });
 
-      let dailyCount = 0;
-      let monthlyCount = 0;
+  function scanFrame() {
+    if (!scanning) return;
+    if (video.readyState === video.HAVE_ENOUGH_DATA) {
+      canvas.height = video.videoHeight;
+      canvas.width = video.videoWidth;
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
-      const today = new Date();
-      const todayStr = today.toLocaleDateString();
-      const monthStr = today.getMonth();
-      const yearStr = today.getFullYear();
-
-      borrowedItems.forEach(r => {
-        const borrowedDate = new Date(r.timestamp || Date.now());
-
-        // Daily (same day, month, year)
-        if (borrowedDate.toLocaleDateString() === todayStr) {
-          dailyCount++;
-        }
-
-        // Monthly (same month & year)
-        if (
-          borrowedDate.getMonth() === monthStr &&
-          borrowedDate.getFullYear() === yearStr
-        ) {
-          monthlyCount++;
-        }
+      const code = jsQR(imageData.data, imageData.width, imageData.height, {
+        inversionAttempts: "dontInvert"
       });
 
-      document.getElementById("dailyIncome").textContent = dailyCount * 20;
-      document.getElementById("monthlyIncome").textContent = monthlyCount * 20;
+      if (code) {
+        overlay.textContent = "✅ QR Detected: " + code.data;
+        const beep = document.getElementById("beepSound");
+        beep.currentTime = 0;
+        beep.play().catch(err => console.warn("Sound play failed:", err));
+
+        scanning = false;
+        stopCamera();
+
+        const found = borrowedItems.find(item => item.code === code.data);
+        if (found) {
+          itemToReturn = found;
+          returnCode.textContent = found.code;
+          returnBorrower.textContent = found.borrower;
+          dlgReturn.showModal();
+        } else {
+          // New Borrow
+          const borrowerName = prompt("Enter borrower name for " + code.data);
+          if (borrowerName) {
+            const price = prompt("Enter price for " + code.data, "20");
+
+            borrowedItems.push({ 
+              code: code.data, 
+              borrower: borrowerName, 
+              date: new Date().toLocaleString(),
+              timestamp: Date.now(),
+              price: Number(price) || 0
+            });
+
+            // ✅ Save into global borrowHistory
+            borrowHistory.push({
+              code: code.data,
+              borrower: borrowerName,
+              timestamp: Date.now(),
+              price: Number(price) || 0
+            });
+
+            saveItems();
+            saveHistory();
+            loadRecords();
+            updateStats();
+            showToast(`Item ${code.data} borrowed by ${borrowerName} 📌`);
+          }
+        }
+      }
     }
+    requestAnimationFrame(scanFrame);
+  }
 
-
-    // Toast Message
-    function showToast(msg) {
-      const toast = document.getElementById("toast");
-      toast.textContent = msg;
-      toast.classList.add("show");
-      setTimeout(() => toast.classList.remove("show"), 3000);
+  // ==========================
+  // RECORDS + RETURNS
+  // ==========================
+  btnConfirmReturn.addEventListener("click", () => {
+    if (itemToReturn) {
+      borrowedItems = borrowedItems.filter(i => i.code !== itemToReturn.code);
+      saveItems();
+      loadRecords();
+      updateStats();
+      showToast(`Item ${itemToReturn.code} returned ✅`);
+      itemToReturn = null;
     }
+    dlgReturn.close();
+  });
 
-    // Init
-    loadItems();
+  function loadRecords(filter = "") {
+    const recordsList = document.getElementById("recordsList");
+    const emptyState = document.getElementById("emptyState");
+    recordsList.innerHTML = "";
+
+    const filtered = borrowedItems.filter(r =>
+      r.code.toLowerCase().includes(filter) || r.borrower.toLowerCase().includes(filter)
+    );
+
+    if (filtered.length === 0) {
+      emptyState.style.display = "block";
+    } else {
+      emptyState.style.display = "none";
+      filtered.forEach(r => {
+        const li = document.createElement("li");
+        const borrowedAt = r.timestamp || Date.now();
+        const hoursPassed = (Date.now() - borrowedAt) / (1000 * 60 * 60);
+        const isLate = hoursPassed > 24;
+
+        const info = document.createElement("div");
+        info.className = "info";
+        info.innerHTML = `
+          <div>
+            ${r.code} - ${r.borrower} 
+            ${isLate ? '<span style="color:red; font-weight:bold;">⏰ Overdue</span>' : ''}
+          </div>
+          <small style="color: grey;">${r.date || ''}</small>
+        `;
+
+        const btnReturn = document.createElement("button");
+        btnReturn.className = "btn danger";
+        btnReturn.textContent = "Return";
+        btnReturn.addEventListener("click", () => {
+          itemToReturn = r;
+          returnCode.textContent = r.code;
+          returnBorrower.textContent = r.borrower;
+          dlgReturn.showModal();
+        });
+
+        li.appendChild(info);
+        li.appendChild(btnReturn);
+        recordsList.appendChild(li);
+      });
+    }
+  }
+// ==========================
+// RECORDS BUTTON FUNCTIONS
+// ==========================
+btnRecords.addEventListener("click", () => {
+  loadRecords();
+  dlgRecords.showModal();
+});
+
+btnCloseRecords.addEventListener("click", () => {
+  dlgRecords.close();
+});
+
+searchRecords.addEventListener("input", (e) => {
+  loadRecords(e.target.value.toLowerCase());
+});
+
+
+  // ==========================
+  // STATS CARDS
+  // ==========================
+  function updateStats() {
+    const totalBorrowers = borrowedItems.length;
+    document.getElementById("totalBorrowers").textContent = totalBorrowers;
+
+    let dailyIncome = 0;
+    let monthlyIncome = 0;
+
+    const today = new Date();
+    const todayStr = today.toLocaleDateString();
+    const monthStr = today.getMonth();
+    const yearStr = today.getFullYear();
+
+    borrowHistory.forEach(r => {
+      const borrowedDate = new Date(r.timestamp);
+
+      if (borrowedDate.toLocaleDateString() === todayStr) {
+        dailyIncome += r.price;
+      }
+      if (
+        borrowedDate.getMonth() === monthStr &&
+        borrowedDate.getFullYear() === yearStr
+      ) {
+        monthlyIncome += r.price;
+      }
+    });
+
+    document.getElementById("dailyIncome").textContent = dailyIncome;
+    document.getElementById("monthlyIncome").textContent = monthlyIncome;
+  }
+
+  // ==========================
+  // TOAST
+  // ==========================
+  function showToast(msg) {
+    const toast = document.getElementById("toast");
+    toast.textContent = msg;
+    toast.classList.add("show");
+    setTimeout(() => toast.classList.remove("show"), 3000);
+  }
+
+// Init
+loadItems();
 loadRecords();
-updateStats(); // ✅
-  </script>
+updateStats();
+
+</script>
+
   <script>
     let deferredPrompt;
-    const btnInstall = document.getElementById("btnInstall");
+  const btnInstall = document.getElementById("btnInstall");
 
-    window.addEventListener("beforeinstallprompt", (e) => {
-      e.preventDefault();
-      deferredPrompt = e;
-      btnInstall.hidden = false;
-    });
+  window.addEventListener("beforeinstallprompt", (e) => {
+    e.preventDefault();
+    deferredPrompt = e;
+    btnInstall.hidden = false; // Show install button
+  });
 
-    btnInstall.addEventListener("click", async () => {
-      if (!deferredPrompt) return;
-      deferredPrompt.prompt();
-      const { outcome } = await deferredPrompt.userChoice;
-      console.log("User choice:", outcome);
-      deferredPrompt = null;
-      btnInstall.hidden = true;
-    });
+  btnInstall.addEventListener("click", async () => {
+    if (!deferredPrompt) return;
+
+    deferredPrompt.prompt();
+    const choice = await deferredPrompt.userChoice;
+    console.log("User choice:", choice.outcome);
+
+    if (choice.outcome === "accepted") {
+      console.log("✅ User accepted install");
+    } else {
+      console.log("❌ User dismissed install");
+    }
+
+    deferredPrompt = null;
+    btnInstall.hidden = true; // Hide after clicked
+  });
+
+  // Hide button once installed
+  window.addEventListener("appinstalled", () => {
+    console.log("✅ App installed");
+    btnInstall.hidden = true;
+  });
+
   </script>
   <script>
     if ("serviceWorker" in navigator) {
